@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>資產查詢系統</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="https://unpkg.com/html5-qrcode/html5-qrcode.min.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="card hero-card">
+        <div class="eyebrow">Asset Lookup</div>
+        <h1>資產查詢系統</h1>
+        <p class="subtext">
+          點擊下方按鈕後，開啟相機掃描資產 QR Code。掃描成功後會自動用「編號」查詢 Google Sheet 並回傳資料。
+        </p>
+
+        <div id="statusBanner" class="status-banner info">尚未開始掃描</div>
+
+        <div class="button-group">
+          <button id="startScanBtn" class="primary-btn">開始掃描 QR Code</button>
+          <button id="nextItemBtn" class="secondary-btn hidden">查詢下一項</button>
+        </div>
+      </section>
+
+      <section id="scannerSection" class="card hidden">
+        <div class="section-title-row">
+          <h2>掃描區</h2>
+          <button id="stopScanBtn" class="text-btn">停止掃描</button>
+        </div>
+        <p class="hint-text">請將 QR Code 對準框線，掃到後會自動送出查詢。</p>
+        <div id="reader" class="reader-box"></div>
+      </section>
+
+      <section id="loadingSection" class="card hidden">
+        <div class="loading-wrap">
+          <div class="spinner"></div>
+          <div>
+            <h2>查詢中</h2>
+            <p id="loadingText">正在比對資產資料，請稍候...</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="resultSection" class="card hidden">
+        <div class="section-title-row">
+          <h2>查詢結果</h2>
+          <span id="sheetBadge" class="sheet-badge"></span>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-item">
+            <div class="meta-label">掃描內容</div>
+            <div id="scannedValue" class="meta-value">-</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">查詢欄位</div>
+            <div class="meta-value">編號</div>
+          </div>
+        </div>
+
+        <div id="resultTableWrap" class="result-table-wrap"></div>
+      </section>
+    </main>
+
+    <script src="/script.js"></script>
+  </body>
+</html>
