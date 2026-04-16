@@ -1,12 +1,9 @@
 {
-  "name": "asset-qr-query-system",
+  "name": "asset-query-system",
   "version": "1.0.0",
   "private": true,
+  "description": "Vercel + Google Apps Script 資產查詢系統",
   "scripts": {
-    "dev": "vercel dev",
-    "start": "vercel dev"
-  },
-  "dependencies": {
-    "googleapis": "^144.0.0"
+    "dev": "vercel dev"
   }
 }

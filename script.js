@@ -1,166 +1,200 @@
-const startScanBtn = document.getElementById('startScanBtn');
-const nextItemBtn = document.getElementById('nextItemBtn');
-const stopScanBtn = document.getElementById('stopScanBtn');
-const scannerSection = document.getElementById('scannerSection');
-const loadingSection = document.getElementById('loadingSection');
-const resultSection = document.getElementById('resultSection');
-const resultTableWrap = document.getElementById('resultTableWrap');
-const scannedValue = document.getElementById('scannedValue');
-const sheetBadge = document.getElementById('sheetBadge');
-const statusBanner = document.getElementById('statusBanner');
-const loadingText = document.getElementById('loadingText');
-
 let html5QrCode = null;
-let isScannerRunning = false;
-let hasHandledScan = false;
+let isScanning = false;
 
-function setStatus(message, type = 'info') {
-  statusBanner.textContent = message;
-  statusBanner.className = `status-banner ${type}`;
+document.addEventListener('DOMContentLoaded', () => {
+  const startScanBtn = document.getElementById('startScanBtn');
+  startScanBtn.addEventListener('click', startScanner);
+});
+
+async function startScanner() {
+  const readerEl = document.getElementById('reader');
+  const statusEl = document.getElementById('status');
+  const startBtn = document.getElementById('startScanBtn');
+
+  clearResult();
+  statusEl.textContent = '';
+  readerEl.classList.remove('hidden');
+
+  if (isScanning) return;
+
+  try {
+    startBtn.disabled = true;
+    startBtn.textContent = '掃描中...';
+
+    html5QrCode = new Html5Qrcode('reader');
+    isScanning = true;
+
+    await html5QrCode.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: { width: 220, height: 220 }
+      },
+      async (decodedText) => {
+        await onScanSuccess(decodedText);
+      },
+      () => {}
+    );
+  } catch (error) {
+    statusEl.textContent = '無法啟動鏡頭，請確認已允許相機權限。';
+    resetScanButton();
+    isScanning = false;
+  }
 }
 
-function hideAllDynamicSections() {
-  scannerSection.classList.add('hidden');
-  loadingSection.classList.add('hidden');
-  resultSection.classList.add('hidden');
+async function onScanSuccess(decodedText) {
+  const code = String(decodedText || '').trim();
+  if (!code) return;
+
+  await stopScanner();
+
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = `已掃描：${code}，查詢中...`;
+
+  await searchByCode(code);
 }
 
 async function stopScanner() {
-  if (html5QrCode && isScannerRunning) {
+  if (html5QrCode && isScanning) {
     try {
       await html5QrCode.stop();
       await html5QrCode.clear();
-    } catch (error) {
-      console.warn('停止掃描時發生狀況：', error);
+    } catch (err) {
+      console.error(err);
     }
   }
 
   html5QrCode = null;
-  isScannerRunning = false;
+  isScanning = false;
+  resetScanButton();
 }
 
-function renderResultTable(rowData) {
-  const rowsHtml = rowData
-    .map((item) => {
-      const value = item.value === '' ? '—' : escapeHtml(String(item.value));
-      return `
-        <tr>
-          <th>${escapeHtml(item.field)}</th>
-          <td>${value}</td>
-        </tr>
-      `;
-    })
-    .join('');
-
-  resultTableWrap.innerHTML = `<table class="result-table"><tbody>${rowsHtml}</tbody></table>`;
+function resetScanButton() {
+  const startBtn = document.getElementById('startScanBtn');
+  startBtn.disabled = false;
+  startBtn.textContent = '開始掃描 QR Code';
 }
 
-function escapeHtml(text) {
-  return text
+async function searchByCode(code) {
+  const resultSection = document.getElementById('resultSection');
+  const scanSection = document.getElementById('scanSection');
+  const statusEl = document.getElementById('status');
+
+  try {
+    const response = await fetch(`/api/search?code=${encodeURIComponent(code)}`);
+    const data = await response.json();
+
+    if (!data.ok) {
+      statusEl.textContent = '';
+      scanSection.classList.add('hidden');
+      resultSection.classList.remove('hidden');
+
+      renderNotFound(data.error || '查詢失敗', code);
+      return;
+    }
+
+    statusEl.textContent = '';
+    scanSection.classList.add('hidden');
+    resultSection.classList.remove('hidden');
+
+    showResult(data);
+  } catch (error) {
+    statusEl.textContent = '';
+    scanSection.classList.add('hidden');
+    resultSection.classList.remove('hidden');
+
+    renderNotFound('系統連線失敗，請稍後再試', code);
+  }
+}
+
+function showResult(data) {
+  const resultArea = document.getElementById('result');
+
+  let html = `
+    <div class="result-card">
+      <div class="result-header">
+        <div class="result-title">查詢結果</div>
+        <div class="result-meta">工作表：${escapeHtml(data.sheetName)}</div>
+        <div class="result-meta">編號：${escapeHtml(data.code)}</div>
+        <div class="result-meta">列號：${escapeHtml(String(data.rowIndex))}</div>
+      </div>
+
+      <div class="result-table">
+  `;
+
+  data.rowData.forEach((item) => {
+    html += `
+      <div class="result-row">
+        <div class="result-key">${escapeHtml(item.key)}</div>
+        <div class="result-value">${escapeHtml(item.value)}</div>
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+
+      <div class="actions">
+        <button id="nextBtn" class="primary-btn">查詢下一項</button>
+      </div>
+    </div>
+  `;
+
+  resultArea.innerHTML = html;
+
+  document.getElementById('nextBtn').addEventListener('click', resetToScan);
+}
+
+function renderNotFound(message, code = '') {
+  const resultArea = document.getElementById('result');
+
+  resultArea.innerHTML = `
+    <div class="result-card">
+      <div class="not-found-title">查無資料</div>
+      <div class="result-meta">${escapeHtml(message)}</div>
+      ${code ? `<div class="result-meta">查詢編號：${escapeHtml(code)}</div>` : ''}
+
+      <div class="actions">
+        <button id="nextBtn" class="primary-btn">查詢下一項</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('nextBtn').addEventListener('click', resetToScan);
+}
+
+function resetToScan() {
+  const scanSection = document.getElementById('scanSection');
+  const resultSection = document.getElementById('resultSection');
+  const resultArea = document.getElementById('result');
+  const statusEl = document.getElementById('status');
+  const readerEl = document.getElementById('reader');
+
+  resultArea.innerHTML = '';
+  statusEl.textContent = '';
+  readerEl.innerHTML = '';
+  readerEl.classList.add('hidden');
+
+  resultSection.classList.add('hidden');
+  scanSection.classList.remove('hidden');
+
+  resetScanButton();
+  startScanner();
+}
+
+function clearResult() {
+  const resultArea = document.getElementById('result');
+  const resultSection = document.getElementById('resultSection');
+
+  resultArea.innerHTML = '';
+  resultSection.classList.add('hidden');
+}
+
+function escapeHtml(str) {
+  return String(str ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
 }
-
-async function lookupAsset(code) {
-  hideAllDynamicSections();
-  loadingSection.classList.remove('hidden');
-  nextItemBtn.classList.remove('hidden');
-  loadingText.textContent = `正在查詢編號：${code}`;
-  setStatus('已掃描成功，正在查詢資料...', 'info');
-
-  try {
-    const response = await fetch(`/api/search?code=${encodeURIComponent(code)}`);
-    const result = await response.json();
-
-    if (!response.ok || !result.success) {
-      throw new Error(result.message || '查詢失敗');
-    }
-
-    scannedValue.textContent = result.lookupValue;
-    sheetBadge.textContent = result.sheetName;
-    renderResultTable(result.rowData);
-
-    hideAllDynamicSections();
-    resultSection.classList.remove('hidden');
-    setStatus(`查詢成功，已於「${result.sheetName}」找到資料。`, 'success');
-  } catch (error) {
-    hideAllDynamicSections();
-    setStatus(error.message || '查無資料或系統異常', 'error');
-    resultTableWrap.innerHTML = '';
-    scannedValue.textContent = code;
-    sheetBadge.textContent = '';
-  }
-}
-
-async function startScanner() {
-  hasHandledScan = false;
-  await stopScanner();
-  hideAllDynamicSections();
-  scannerSection.classList.remove('hidden');
-  nextItemBtn.classList.add('hidden');
-  setStatus('相機已開啟，請對準 QR Code。', 'info');
-
-  html5QrCode = new Html5Qrcode('reader');
-
-  try {
-    const devices = await Html5Qrcode.getCameras();
-    const cameraConfig = devices && devices.length > 0
-      ? { facingMode: 'environment' }
-      : { facingMode: 'environment' };
-
-    await html5QrCode.start(
-      cameraConfig,
-      {
-        fps: 10,
-        qrbox: (viewfinderWidth, viewfinderHeight) => {
-          const edge = Math.min(viewfinderWidth, viewfinderHeight) * 0.75;
-          return { width: edge, height: edge };
-        }
-      },
-      async (decodedText) => {
-        if (hasHandledScan) return;
-
-        hasHandledScan = true;
-        const code = decodedText.trim();
-        await stopScanner();
-        await lookupAsset(code);
-      },
-      () => {
-        // 掃描過程中的失敗不用特別顯示
-      }
-    );
-
-    isScannerRunning = true;
-  } catch (error) {
-    console.error(error);
-    await stopScanner();
-    setStatus(
-      '無法啟動相機。請確認已允許相機權限，並使用手機瀏覽器直接開啟本站。',
-      'error'
-    );
-  }
-}
-
-startScanBtn.addEventListener('click', async () => {
-  await startScanner();
-});
-
-stopScanBtn.addEventListener('click', async () => {
-  await stopScanner();
-  hideAllDynamicSections();
-  setStatus('已停止掃描。', 'info');
-});
-
-nextItemBtn.addEventListener('click', () => {
-  window.location.href = `/?scan=1&t=${Date.now()}`;
-});
-
-window.addEventListener('DOMContentLoaded', async () => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('scan') === '1') {
-    await startScanner();
-  }
-});
